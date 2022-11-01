@@ -6,26 +6,33 @@ import (
 	"html"
 	"log"
 	"net/http"
-	"sync"
 
-	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel"
 )
 
-type hookHandler struct {
-	mu     sync.Mutex
-	tracer trace.Tracer
-}
-
-func (h *hookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	_, span := h.tracer.Start(context.Background(), "request")
+func HookHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "GET" {
+		fmt.Fprintf(w, "Hello, World!\n")
+		return
+	}
+	if r.Method != "POST" {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	_, span := otel.Tracer("circleci").Start(context.Background(), "request")
 	defer span.End()
-	defer fmt.Fprintf(w, "Created Request\n")
+	fmt.Fprintf(w, "Created Request\n")
 }
 
+func TraceparentHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	fmt.Printf("received /traceparent request for '%v'", r.URL.Path)
+}
 func main() {
-	http.Handle("", new(hookHandler))
+	http.HandleFunc("", HookHandler)
 
 	http.HandleFunc("/bar", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "Hello, %q", html.EscapeString(r.URL.Path))
